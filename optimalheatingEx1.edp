@@ -1,0 +1,139 @@
+// could be anything such that 6= 0 and C1 6= C2
+border C10(t=0,2){ x=t; y=0;  label=11;}
+border C11(t=0,2){ x=2; y=t; label=12;}
+border C12(t=0,2){ x=2-t; y=2; label=13;}
+border C13(t=0,2){ x=0; y=2-t; label=14;}
+// C2
+border C20(t=2*pi,0){x=1+.2*sin(t);y=1+.2*cos(t); label=20;}
+border C21(t=0,.4){ x=.8+t; y=.5; label=21;}
+border C22(t=0,1){ x=1.2; y=.5+t; label=22;}
+border C23(t=0,.4){ x=1.2-t; y=1.5; label=23;}
+border C24(t=0,1){ x=.8; y=1.5-t; label=24;}
+// C3
+//border C31(t=0,.3){ x=1.4+t; y=.5; label=B31;}
+//border C32(t=0,1){ x=1.7; y=.5+t; label=B32;}
+//border C33(t=0,.3){ x=1.7-t; y=1.5; label=B3;}
+//border C34(t=0,1){ x=1.4; y=1.5-t; label=B3;}
+
+//plot( C10(20) // to see the border of the domain
+// + C11(20)+C12(20)+C13(20),
+//+ C20(-20),
+//+ C21(-5)+C22(-10)+C23(-5)+ C24(-10),
+//+ C31(-5)+C32(-20)+C33(-5)+C34(-20),
+// wait=true); //ps="heatexb.eps"
+
+mesh Th=buildmesh( C10(20)
++ C11(20)+C12(20)+C13(20)+C20(-20));
+//+ C21(-5)+C22(-10)+C23(-5)+C24(-10));
+// +C31(-5)+C32(-20)+C33(-5)+C34(-20)); +on(C2,u=co2)
+//plot(Th,wait=1);
+fespace Vh(Th,P1); Vh u,w,v,f,ud,mcu=0;
+//func g
+ud[]=.2*(x>.5)*(y<.5);
+//=g;
+fespace Uh(Th,P0); Uh cont;  
+//func ud=x*(1-y)^2;
+func co1=.001*(x>1)*(y<.8)+2*(1-x)*y*(x<1)*(y>1);//*x*(1-x);//*(y>.5)*(y<1.5)+(x>.6) + .0001*(y>.5)*(y<1.5)+(x<.46);//sin(x*y)+.2;
+func co2=sin(x+y)+.2*x;
+//creating random fields
+//fespace Vh(Th, P2);
+//
+for (int mi=0;mi<9;mi++)
+{
+//   --- - -   -- -- Monte Carlo Iteration - - - - -----
+//
+
+Vh f1;
+int tt = time();
+randinit(tt);
+//
+for (int i=0;i<Vh.ndof;i++) 
+{
+  f1[](i) = randreal1();
+}
+cout<<"degree of freedom: "<<Vh.ndof<<endl;
+cout<<"the random field plot"<<""<<endl;
+f=f1+2*(x>1)*(x<1.8)*(y<.8)*(y>.2);
+//plot(f,cmm="f");
+
+//
+Vh kappa=.5*x+f1;
+//plot(kappa,cmm="kappa");
+/*solve heat1(w,v)= int2d(Th)(kappa*(dx(w) *dx(v)+ dy(w) *dy(v)))
+ - int2d(Th)(f1*v)
+ + on(B12,B14,B11,B13,w=0)
+// + on(B11,B13,w=g)
+ + on(B22,B24,w = g);*/
+//
+//
+real error=0.1; // level of error
+problem Poisson(u,v,solver=GMRES,eps=1.0e-6) =
+int2d(Th)(kappa *( dx(u) *dx(v) + dy(u) *dy(v)))
+- int2d(Th) ( f*v ) - int1d(Th,C13)(cont*v)
++ on(11,12,13,20,u=0.00001);
+//+ on(14,u=cont);
+//+ on(11,u=co2) ;
+func real J(real[int] & cont)
+{
+//Vh udd; udd[]=ud;
+Uh cnt;cnt[]=cont;
+real s=.5*int2d(Th)((u-ud)^2) + .05*int1d(Th,C13)(cnt^2);
+// 
+return s;
+}
+//
+func real[int] dJ(real[int] & cont)
+{
+//Vh udd; udd[]=ud;
+Uh cnt;cnt[]=cont;
+// 
+real[int] dj = int2d(Th)(u-ud) + .1*int1d(Th,C13)(cnt);
+ return dj;
+}
+//
+//
+Uh cold=0;
+int iter=0;
+while (iter <4)
+//(int1d(Th,C20)((cont-cold)^2)>=.00001)
+{
+// optimization with given control
+cold=cont;
+BFGS(J,dJ,cont[],eps=1.e-3,nbiter=10,nbiterline=10);
+//LinearCG(dJ,cont[],eps=1.e-3,nbiter=10,verbosity=5);
+//NLCG(dJ,cont[],eps=1.e-3,nbiter=10,verbosity=5);
+//
+Poisson;
+Th=adaptmesh(Th,u,err=error);
+error = error/2;
+//
+iter++;
+//
+int j = .05*int2d(Th,C13)(cont^2);
+cout<<"value of objective function: "<<J(cont[])<<","<<j<<endl;
+cout<<"at the teration : "<<iter<<endl;
+//
+};
+mcu = mcu + .1*u;
+};
+//
+// Monte Carlo manipulation
+
+//cout<<"The random vec : "<<f1[]<<endl;
+plot(u,cmm=" The state",ps="state.vtk");
+plot(mcu,cmm=" The MCS state",ps="MCSstate.vtk");
+/*
+Vh cpl;cpl=ud;
+plot(cpl,cmm=" The target");
+plot(cont,cmm=" The control");
+*/
+//plot(vu);
+//plot(cont);
+//
+//real j=int2d(Th)((u-ud)^2) + .1*int2d(Th,C20)(cont^2);
+//cout<<"value of objective function: "<<j<<endl;
+//cout<<"the control function: "<<<<endl;
+// 
+//   solving example with optimization
+//
+// ---  a real non linear test ---
